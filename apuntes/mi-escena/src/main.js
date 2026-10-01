@@ -22,8 +22,18 @@ camera.position.set(0, 16, 20);
 const orbit = new OrbitControls(camera, renderizador.domElement);
 orbit.update();
 
-
 const gui = new dat.GUI();
+
+const audioLoader = new THREE.AudioLoader();
+
+const backgroundMusic = new THREE.Audio(new THREE.AudioListener());
+audioLoader.load('../src/audio/bkgm.mp3', (buffer) => {
+  backgroundMusic.setBuffer(buffer);
+  backgroundMusic.setLoop(true);
+  backgroundMusic.setVolume(0.5);
+  backgroundMusic.play();
+});
+
 
 // Ajuste de tamaño
 function ajusteCanvas() {
@@ -40,46 +50,103 @@ window.addEventListener('resize', ajusteCanvas);
 escena.add(new THREE.AmbientLight(0xffffff, 1));
 
 RectAreaLightUniformsLib.init();
-const rectLight = new THREE.RectAreaLight(0xffffff, 0.8, 0.7, 0.8);
+
+const SEPARACION = 2.9;
+const COPIAS = 4;
+
+// Luz principal (la que controla el GUI)
+const rectLight = new THREE.RectAreaLight(0xffffff, 10, 0.7, 0.8);
 rectLight.position.set(-5.6, 6.6, -1.7);
-rectLight.lookAt(-1, -50, 0);
-rectLight.intensity = 10;
 escena.add(rectLight);
+rectLight.add(new RectAreaLightHelper(rectLight));
 
-const rectHelper = new RectAreaLightHelper(rectLight);
-rectLight.add(rectHelper);
+const luces = [rectLight];
 
-const lightFolder = gui.addFolder('RectAreaLight');
-const rectFolder = lightFolder.addFolder('RectAreaLight');
-rectFolder.open();
+// Copias
+for (let i = 1; i <= COPIAS; i++) {
+  const copia = new THREE.RectAreaLight(0xffffff, 10, 0.7, 0.8);
+  escena.add(copia);
+  copia.add(new RectAreaLightHelper(copia));
+  luces.push(copia);
+}
 
 const params = {
   color: '#ffffff',
-  targetX: 5,
-  targetY: 10,
+  targetX: -1,
+  targetY: -50,
   targetZ: 0,
 };
 
-function apuntar() {
-  rectLight.lookAt(params.targetX, params.targetY, params.targetZ);
+// Sincroniza todas las luces con la principal
+function actualizarLuces() {
+  luces.forEach((luz, i) => {
+    const desplazamiento = i * SEPARACION;
+
+    luz.position.set(
+      rectLight.position.x + desplazamiento,
+      rectLight.position.y,
+      rectLight.position.z
+    );
+    luz.width = rectLight.width;
+    luz.height = rectLight.height;
+    luz.intensity = rectLight.intensity;
+    luz.color.copy(rectLight.color);
+
+    // El objetivo también se desplaza, así todas apuntan en paralelo
+    luz.lookAt(params.targetX + desplazamiento, params.targetY, params.targetZ);
+  });
 }
+actualizarLuces();
 
-// Tamaño
-rectFolder.add(rectLight, 'width', 0.1, 20, 0.1).name('Ancho');
-rectFolder.add(rectLight, 'height', 0.1, 20, 0.1).name('Alto');
+// GUI
+const lightFolder = gui.addFolder('RectAreaLight');
+lightFolder.open();
 
-// Posición
-const posFolder = rectFolder.addFolder('Posición');
-posFolder.add(rectLight.position, 'x', -30, 30, 0.1).onChange(apuntar);
-posFolder.add(rectLight.position, 'y', -30, 30, 0.1).onChange(apuntar);
-posFolder.add(rectLight.position, 'z', -30, 30, 0.1).onChange(apuntar);
+lightFolder.add(rectLight, 'intensity', 0, 50, 0.1).name('Intensidad').onChange(actualizarLuces);
+lightFolder.add(rectLight, 'width', 0.1, 20, 0.1).name('Ancho').onChange(actualizarLuces);
+lightFolder.add(rectLight, 'height', 0.1, 20, 0.1).name('Alto').onChange(actualizarLuces);
+lightFolder.addColor(params, 'color').name('Color').onChange((valor) => {
+  rectLight.color.set(valor);
+  actualizarLuces();
+});
+
+const posFolder = lightFolder.addFolder('Posición (luz principal)');
+posFolder.add(rectLight.position, 'x', -30, 30, 0.1).onChange(actualizarLuces);
+posFolder.add(rectLight.position, 'y', -30, 30, 0.1).onChange(actualizarLuces);
+posFolder.add(rectLight.position, 'z', -30, 30, 0.1).onChange(actualizarLuces);
 posFolder.open();
 
-// Hacia dónde apunta
-const targetFolder = rectFolder.addFolder('Apunta a');
-targetFolder.add(params, 'targetX', -50, 30, 0.1).onChange(apuntar);
-targetFolder.add(params, 'targetY', -50, 30, 0.1).onChange(apuntar);
-targetFolder.add(params, 'targetZ', -50, 30, 0.1).onChange(apuntar);
+const targetFolder = lightFolder.addFolder('Apunta a');
+targetFolder.add(params, 'targetX', -50, 30, 0.1).onChange(actualizarLuces);
+targetFolder.add(params, 'targetY', -50, 30, 0.1).onChange(actualizarLuces);
+targetFolder.add(params, 'targetZ', -50, 30, 0.1).onChange(actualizarLuces);
+
+// --- Hover sobre neko ---
+const raycaster = new THREE.Raycaster();
+const puntero = new THREE.Vector2(10, 10); // fuera de pantalla al inicio
+let sobreNeko = false;
+let ultimoCambio = 0;
+const INTERVALO = 250; // ms entre cambios de color
+
+canvas.addEventListener('pointermove', (e) => {
+  const r = canvas.getBoundingClientRect();
+  puntero.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  puntero.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+});
+
+canvas.addEventListener('pointerleave', () => {
+  puntero.set(10, 10);
+});
+
+function coloresAleatorios() {
+  luces.forEach((luz) => {
+    luz.color.setHSL(Math.random(), 1, 0.5); // colores vivos
+  });
+}
+
+function restaurarColor() {
+  luces.forEach((luz) => luz.color.set(params.color));
+}
 
 
 // Modelos (en la carpeta public/)
@@ -107,8 +174,27 @@ loader.load('src/neko.glb',
   (error) => console.error('Error al cargar neko', error)
 );
 
-// Loop
-renderizador.setAnimationLoop(() => {
-  if (neko) neko.rotation.y += 0.03;
+renderizador.setAnimationLoop((tiempo) => {
+  if (neko) {
+    neko.rotation.y += 0.03;
+
+    raycaster.setFromCamera(puntero, camera);
+    const encima = raycaster.intersectObject(neko, true).length > 0;
+
+    if (encima) {
+      if (tiempo - ultimoCambio > INTERVALO) {
+        coloresAleatorios();
+        ultimoCambio = tiempo;
+        backgroundMusic.setVolume(0.5 + 2);
+      }
+    } else if (sobreNeko) {
+      restaurarColor(); // acaba de salir
+      backgroundMusic.setVolume(0.5);
+    }
+
+    sobreNeko = encima;
+    canvas.style.cursor = encima ? 'pointer' : 'default';
+  }
+
   renderizador.render(escena, camera);
 });
