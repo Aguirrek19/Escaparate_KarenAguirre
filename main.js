@@ -153,7 +153,7 @@ function restaurarColor() {
 const loader = new GLTFLoader();
 
 let escaparate;
-loader.load('src/escaparate.glb',
+loader.load('escaparate.glb',
   (gltf) => {escena.add(gltf.scene)
     escaparate = gltf.scene;
     escaparate.position.set(0, 0, -5);
@@ -164,7 +164,7 @@ loader.load('src/escaparate.glb',
 );
 
 let neko;
-loader.load('src/neko.glb',
+loader.load('neko.glb',
   (gltf) => {
     neko = gltf.scene;
     neko.position.set(2, 4, -5);
